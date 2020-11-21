@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -10,32 +11,44 @@ var cache = map[int]Book{}
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func main() {
+	wg := &sync.WaitGroup{}
+	mx := &sync.Mutex{}
 	for i := 0; i < 10; i++ {
+		wg.Add(2)
 		id := rnd.Intn(10) + 1
-		if b, ok := querryCache(id); ok {
-			fmt.Println("From the cache")
-			fmt.Println(b)
-			continue
-		}
-		if b, ok := querryDtabase(id); ok {
-			fmt.Println("From the database")
-			fmt.Println(b)
-			continue
-		}
-		fmt.Println("Book not found")
-		time.Sleep(150 * time.Microsecond)
+		go func(id int, wg *sync.WaitGroup, mx *sync.Mutex) {
+			if b, ok := querryCache(id, mx); ok {
+				fmt.Println("From the cache")
+				fmt.Println(b)
+			}
+			wg.Done()
+		}(id, wg, mx)
+		go func(id int, wg *sync.WaitGroup, mx *sync.Mutex) {
+			if b, ok := querryDtabase(id, mx); ok {
+				fmt.Println("From the database")
+				fmt.Println(b)
+			}
+			wg.Done()
+		}(id, wg, mx)
+		//fmt.Println("Book not found")
+		//time.Sleep(150 * time.Microsecond)
 	}
 	//println(id)
+	wg.Wait()
 }
-func querryCache(id int) (Book, bool) {
+func querryCache(id int, mx *sync.Mutex) (Book, bool) {
+	mx.Lock()
 	b, ok := cache[id]
+	mx.Unlock()
 	return b, ok
 }
-func querryDtabase(id int) (Book, bool) {
-	time.Sleep(100 * time.Microsecond)
+func querryDtabase(id int, mx *sync.Mutex) (Book, bool) {
+	//time.Sleep(100 * time.Microsecond)
 	for _, b := range books {
 		if b.ID == id {
+			mx.Lock()
 			cache[id] = b
+			mx.Unlock()
 			return b, true
 		}
 	}
